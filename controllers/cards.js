@@ -164,7 +164,14 @@ exports.deleteCard = async (req, res) => {
 exports.moveCard = async (req, res) => {
   const { destinationListId, position } = req.body;
 
+  console.log("Server received moveCard request:", {
+    cardId: req.params.id,
+    destinationListId,
+    position,
+  });
+
   if (!destinationListId || position === undefined) {
+    console.error("Missing required fields for moveCard:", req.body);
     return res
       .status(400)
       .json({ message: "Please provide all required fields" });
@@ -175,6 +182,7 @@ exports.moveCard = async (req, res) => {
     const card = await Card.findById(req.params.id);
 
     if (!card) {
+      console.error("Card not found:", req.params.id);
       return res.status(404).json({ message: "Card not found" });
     }
 
@@ -182,10 +190,15 @@ exports.moveCard = async (req, res) => {
     const board = await Board.findById(card.board);
 
     if (!board) {
+      console.error("Board not found for card:", card.board);
       return res.status(404).json({ message: "Board not found" });
     }
 
     if (board.owner.toString() !== req.user._id.toString()) {
+      console.error("User not authorized:", {
+        owner: board.owner.toString(),
+        user: req.user._id.toString(),
+      });
       return res.status(401).json({ message: "Not authorized" });
     }
 
@@ -194,30 +207,44 @@ exports.moveCard = async (req, res) => {
     const destinationList = await List.findById(destinationListId);
 
     if (!sourceList || !destinationList) {
+      console.error("Source or destination list not found:", {
+        sourceListId: card.list,
+        destinationListId,
+      });
       return res.status(404).json({ message: "List not found" });
     }
+
+    console.log("Moving card:", {
+      card: card._id,
+      from: sourceList.title,
+      to: destinationList.title,
+      position,
+    });
 
     // Remove card from source list
     sourceList.cards = sourceList.cards.filter(
       (cardId) => cardId.toString() !== card._id.toString()
     );
     await sourceList.save();
+    console.log("Card removed from source list");
 
     // Add card to destination list
     destinationList.cards.push(card._id);
     await destinationList.save();
+    console.log("Card added to destination list");
 
     // Update card with new list and position
     card.list = destinationListId;
     card.position = position;
     await card.save();
+    console.log("Card updated with new list and position");
 
     res.json(card);
   } catch (err) {
-    console.error(err.message);
+    console.error("Error in moveCard:", err);
     if (err.kind === "ObjectId") {
       return res.status(404).json({ message: "Card or list not found" });
     }
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };

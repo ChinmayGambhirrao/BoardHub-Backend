@@ -27,10 +27,6 @@ const UserSchema = new mongoose.Schema(
       type: String,
       sparse: true,
     },
-    githubId: {
-      type: String,
-      sparse: true,
-    },
     boards: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -69,9 +65,13 @@ UserSchema.pre("save", async function (next) {
   }
 });
 
-// Method to compare password
+// Compare password method
 UserSchema.methods.comparePassword = async function (candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password);
+  try {
+    return await bcrypt.compare(candidatePassword, this.password);
+  } catch (err) {
+    throw err;
+  }
 };
 
 module.exports = mongoose.model("User", UserSchema);

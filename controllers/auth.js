@@ -3,7 +3,6 @@ const bcrypt = require("bcryptjs");
 const { validationResult } = require("express-validator");
 const User = require("../models/User");
 const { OAuth2Client } = require("google-auth-library");
-const axios = require("axios");
 
 // Initialize Google OAuth client
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -116,36 +115,63 @@ exports.login = async (req, res) => {
 // Google OAuth login
 exports.googleAuth = async (req, res) => {
   try {
-    const { token } = req.body;
-    const ticket = await googleClient.verifyIdToken({
-      idToken: token,
+    const { code } = req.body;
+    console.log(
+      "Received auth code:",
+      code ? `${code.substring(0, 10)}...` : "missing"
+    );
+
+    if (!code) {
+      return res.status(400).json({
+        message: "Bad request",
+        error: "Authorization code is required",
+      });
+    }
+
+    // Create OAuth2 client with correct redirect URI
+    const serverUrl = process.env.SERVER_URL || "http://localhost:5001";
+    const redirectUri = `${serverUrl}/api/auth/google/callback`;
+
+    const oauth2Client = new OAuth2Client(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      redirectUri
+    );
+
+    // Exchange the code for tokens
+    const { tokens } = await oauth2Client.getToken(code);
+
+    // Get user info from the ID token
+    const ticket = await oauth2Client.verifyIdToken({
+      idToken: tokens.id_token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
-    const { name, email, picture } = ticket.getPayload();
+    const payload = ticket.getPayload();
+    const { name, email, picture, sub: googleId } = payload;
 
     // Find or create user
     let user = await User.findOne({ email });
+
     if (!user) {
       user = new User({
         name,
         email,
         avatar: picture,
-        googleId: ticket.getPayload().sub,
+        googleId,
       });
       await user.save();
     } else if (!user.googleId) {
-      // Link Google account to existing user
-      user.googleId = ticket.getPayload().sub;
+      user.googleId = googleId;
       user.avatar = picture;
       await user.save();
     }
 
-    // Generate token
-    const jwtToken = generateToken(user._id);
+    // Generate JWT token
+    const token = generateToken(user._id);
 
     res.json({
-      token: jwtToken,
+      token,
       user: {
         id: user._id,
         name: user.name,
@@ -154,72 +180,12 @@ exports.googleAuth = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-};
-
-// GitHub OAuth login
-exports.githubAuth = async (req, res) => {
-  try {
-    const { code } = req.body;
-
-    // Exchange code for access token
-    const tokenResponse = await axios.post(
-      "https://github.com/login/oauth/access_token",
-      {
-        client_id: process.env.GITHUB_CLIENT_ID,
-        client_secret: process.env.GITHUB_CLIENT_SECRET,
-        code,
-      },
-      {
-        headers: {
-          Accept: "application/json",
-        },
-      }
-    );
-
-    const { access_token } = tokenResponse.data;
-
-    // Get user data from GitHub
-    const userResponse = await axios.get("https://api.github.com/user", {
-      headers: {
-        Authorization: `token ${access_token}`,
-      },
+    console.error("Google Auth Error:", error);
+    res.status(400).json({
+      message: "Failed to authenticate with Google",
+      error: error.message,
+      details: error.response?.data || null,
     });
-
-    const { name, email, avatar_url, id } = userResponse.data;
-
-    // Find or create user
-    let user = await User.findOne({ email });
-    if (!user) {
-      user = new User({
-        name: name || email.split("@")[0],
-        email,
-        avatar: avatar_url,
-        githubId: id.toString(),
-      });
-      await user.save();
-    } else if (!user.githubId) {
-      // Link GitHub account to existing user
-      user.githubId = id.toString();
-      user.avatar = avatar_url;
-      await user.save();
-    }
-
-    // Generate token
-    const jwtToken = generateToken(user._id);
-
-    res.json({
-      token: jwtToken,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
