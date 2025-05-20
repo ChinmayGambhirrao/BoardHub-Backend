@@ -3,6 +3,7 @@ const List = require("../models/List");
 const Board = require("../models/Board");
 const Attachment = require("../models/Attachment");
 const Comment = require("../models/Comment");
+const cloudinary = require("../utils/cloudinary");
 
 // @desc    Create a new card
 // @route   POST /api/cards
@@ -265,7 +266,6 @@ exports.removeCardMember = async (req, res) => {
 // @access  Private
 exports.addAttachment = async (req, res) => {
   try {
-    const { name, url, type } = req.body;
     const card = await Card.findById(req.params.id);
 
     if (!card) {
@@ -284,12 +284,22 @@ exports.addAttachment = async (req, res) => {
         .json({ message: "Not authorized to modify this card" });
     }
 
+    // Check if file was uploaded
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    // Create attachment record
     const attachment = new Attachment({
-      name,
-      url,
-      type,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      url: req.file.path,
       card: card._id,
       uploadedBy: req.user._id,
+      isImage: req.file.mimetype.startsWith('image/'),
+      thumbnailUrl: req.file.mimetype.startsWith('image/') ? req.file.path : ''
     });
 
     await attachment.save();
@@ -301,13 +311,14 @@ exports.addAttachment = async (req, res) => {
     board.activity.push({
       type: "card_attachment_add",
       user: req.user._id,
-      description: `Attachment added to card "${card.title}"`,
+      description: `Attachment "${attachment.originalName}" added to card "${card.title}"`,
     });
 
     await board.save();
 
     res.status(201).json(attachment);
   } catch (error) {
+    console.error('Attachment upload error:', error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
@@ -336,12 +347,23 @@ exports.removeAttachment = async (req, res) => {
         .json({ message: "Not authorized to modify this card" });
     }
 
+    // Remove attachment from Cloudinary
+    try {
+      const publicId = attachment.url.split('/').slice(-1)[0].split('.')[0];
+      await cloudinary.uploader.destroy(publicId);
+    } catch (cloudinaryError) {
+      console.error('Cloudinary deletion error:', cloudinaryError);
+      // Continue with deletion even if Cloudinary deletion fails
+    }
+
+    // Remove attachment from card
     card.attachments = card.attachments.filter(
       (a) => !a.equals(attachment._id)
     );
     await card.save();
 
-    await attachment.remove();
+    // Delete attachment record
+    await attachment.deleteOne();
 
     // Add activity log
     board.activity.push({
@@ -354,6 +376,7 @@ exports.removeAttachment = async (req, res) => {
 
     res.json({ message: "Attachment removed" });
   } catch (error) {
+    console.error('Attachment removal error:', error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };

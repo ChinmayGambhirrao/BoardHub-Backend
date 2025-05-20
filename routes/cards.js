@@ -1,6 +1,7 @@
 const express = require("express");
 const { check } = require("express-validator");
 const auth = require("../middleware/auth");
+const upload = require("../middleware/upload");
 const {
   createCard,
   updateCard,
@@ -85,15 +86,7 @@ router.delete("/:id/members/:userId", removeCardMember);
 // @route   POST /api/cards/:id/attachments
 // @desc    Add attachment to card
 // @access  Private
-router.post(
-  "/:id/attachments",
-  [
-    check("name", "Name is required").not().isEmpty(),
-    check("url", "URL is required").not().isEmpty(),
-    check("type", "Type is required").not().isEmpty(),
-  ],
-  addAttachment
-);
+router.post("/:id/attachments", upload.single("file"), addAttachment);
 
 // @route   DELETE /api/cards/:id/attachments/:attachmentId
 // @desc    Remove attachment from card
