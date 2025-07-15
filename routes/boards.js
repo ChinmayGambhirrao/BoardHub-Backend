@@ -9,6 +9,7 @@ const {
   deleteBoard,
   addMember,
   removeMember,
+  createBoardFromTemplate,
 } = require("../controllers/board");
 const { createList, reorderLists } = require("../controllers/list");
 
@@ -59,6 +60,11 @@ router.put(
 // @desc    Delete a board
 // @access  Private
 router.delete("/:id", deleteBoard);
+
+// @route   POST /api/boards/from-template
+// @desc    Create a new board from a template
+// @access  Private
+router.post("/from-template", createBoardFromTemplate);
 
 // @route   POST /api/boards/:boardId/lists
 // @desc    Create a new list in a board

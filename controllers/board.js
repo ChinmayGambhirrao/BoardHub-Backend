@@ -1,6 +1,7 @@
 const Board = require("../models/Board");
 const List = require("../models/List");
 const Card = require("../models/Card");
+const Template = require("../models/Template");
 
 // @desc    Create a new board
 // @route   POST /api/boards
@@ -37,6 +38,70 @@ exports.createBoard = async (req, res) => {
     await req.user.save();
 
     res.status(201).json(board);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// @desc    Create a new board from a template
+// @route   POST /api/boards/from-template
+// @access  Private
+exports.createBoardFromTemplate = async (req, res) => {
+  try {
+    const { templateName } = req.body;
+    if (!templateName) {
+      return res.status(400).json({ message: "Template name is required" });
+    }
+    const template = await Template.findOne({ name: templateName });
+    if (!template) {
+      return res.status(404).json({ message: "Template not found" });
+    }
+
+    // Create the board
+    const board = new Board({
+      title: template.name,
+      description: template.description,
+      owner: req.user._id,
+      members: [{ user: req.user._id, role: "admin" }],
+    });
+    await board.save();
+
+    // Create lists (columns)
+    const lists = [];
+    for (let i = 0; i < template.columns.length; i++) {
+      const list = new List({
+        title: template.columns[i],
+        board: board._id,
+        position: i,
+      });
+      await list.save();
+      lists.push(list);
+      board.lists.push(list._id);
+    }
+    await board.save();
+
+    // Create cards
+    for (const cardTemplate of template.cards) {
+      const list = lists.find((l) => l.title === cardTemplate.column);
+      if (!list) continue;
+      const card = new Card({
+        title: cardTemplate.title,
+        description: cardTemplate.description,
+        list: list._id,
+        board: board._id,
+        position: list.cards.length,
+        createdBy: req.user._id,
+      });
+      await card.save();
+      list.cards.push(card._id);
+      await list.save();
+    }
+
+    // Add board to user's boards array
+    req.user.boards.push(board._id);
+    await req.user.save();
+
+    res.status(201).json({ boardId: board._id });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }

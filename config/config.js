@@ -3,7 +3,9 @@ require("dotenv").config();
 module.exports = {
   port: process.env.PORT || 5001,
   nodeEnv: process.env.NODE_ENV || "development",
-  mongoUri: process.env.MONGODB_URI || "mongodb://localhost:27017/boardhub",
+  mongoUri:
+    "mongodb+srv://db_admin:db_admin@cluster0.43zf6.mongodb.net/boardHub" ||
+    "mongodb://localhost:27017/boardhub",
   jwtSecret: process.env.JWT_SECRET,
   googleClientId: process.env.GOOGLE_CLIENT_ID,
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
