@@ -9,9 +9,9 @@ module.exports = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
   githubClientId: process.env.GITHUB_CLIENT_ID,
   githubClientSecret: process.env.GITHUB_CLIENT_SECRET,
-  // cloudinary: {
-  //   cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-  //   apiKey: process.env.CLOUDINARY_API_KEY,
-  //   apiSecret: process.env.CLOUDINARY_API_SECRET,
-  // },
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
 };
