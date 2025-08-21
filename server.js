@@ -7,6 +7,7 @@ const MongoStore = require("connect-mongo");
 const dotenv = require("dotenv");
 const connectDB = require("./config/db");
 const { createServer } = require("http");
+const {Server} = require("socket.io");
 const jwt = require("jsonwebtoken");
 const User = require("./models/User.js");
 const { socketRateLimiter } = require("./middleware/rateLimit.js");
@@ -68,6 +69,89 @@ io.on("connection", (socket) => {
     });
     console.log(`${socket.user.name} joined board ${boardId}`);
   });
+
+  // Leave board room
+  socket.on("leave-board", (boardId) => {
+    socket.leave(`board-${boardId}`);
+
+    // Notify other users in the board
+    socket.to(`board-${boardId}`).emit("user-left", {
+      userId: socket.user._id,
+      name: socket.user.name,
+      avatar: socket.user.avatar,
+      socketId: socket.id,
+    })
+
+    console.log(`${socket.user.name} left board ${boardId}`);
+  })
+
+  // Card events with rate limiting
+  socket.on("card-created", socketRateLimiter("card-updated", 30), (data) => {
+    socket.to(`board-${data.boardId}`).emit("card-updated", {
+      ...data,
+      updatedBy: {
+        _id: socket.user._id,
+        name: socket.user.name,
+        avatar: socket.user.avatar,
+      }
+    })
+  })
+
+  socket.on("card-deleted", socketRateLimiter("card-deleted", 10), (data) => {
+    socket.to(`board-${data.boardId}`).emit("card-deleted", {
+      ...data,
+      deletedBy: {
+        _id: socket.user._id,
+        name: socket.user.name,
+        avatar: socket.user.avatar,
+      }
+    })
+  })
+
+  socket.on("card-moved", socketRateLimiter("card-moved", 50), (data) => {
+    socket.to(`board-${data.boardId}`).emit("card-moved", {
+      ...data,
+      movedBy: {
+        _id: socket.user._id,
+        name: socket.user.name,
+        avatar: socket.user.avatar,
+      }
+    })
+  })
+
+  // List events with rate limiting
+  socket.on("list-created", socketRateLimiter("list-created", 15), (data) => {
+    socket.to(`board-${data.boardId}`).emit("list-created", {
+      ...data,
+      createdBy: {
+        _id: socket.user._id,
+        name: socket.user.name,
+        avatar: socket.user.avatar,
+      }
+    })
+  })
+
+  socket.on("list-updated", socketRateLimiter("list-updated", 15), (data) => {
+    socket.to(`board-${data.boardId}`).emit("list-updated", {
+      ...data,
+      updatedBy: {
+        _id: socket.user._id,
+        name: socket.user.name,
+        avatar: socket.user.avatar,
+      }
+    })
+  })
+
+  socket.on("list-deleted", socketRateLimiter("list-deleted", 15), (data) => {
+    socket.to(`board-${data.boardId}`).emit("list-deleted", {
+      ...data,
+      deletedBy: {
+        _id: socket.user._id,
+        name: socket.user.name,
+        avatar: socket.user.avatar,
+      }
+    })
+  })
 });
 
 // Middleware
