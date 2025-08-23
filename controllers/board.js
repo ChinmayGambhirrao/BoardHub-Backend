@@ -2,6 +2,7 @@ const Board = require("../models/Board");
 const List = require("../models/List");
 const Card = require("../models/Card");
 const Template = require("../models/Template");
+const User = require("../models/User");
 
 // @desc    Create a new board
 // @route   POST /api/boards
@@ -18,6 +19,8 @@ exports.createBoard = async (req, res) => {
       owner: req.user._id,
       members: [{ user: req.user._id, role: "admin" }],
     });
+
+    console.log("Creating board with owner:", req.user._id);
 
     await board.save();
 
@@ -153,10 +156,21 @@ exports.getBoard = async (req, res) => {
     }
 
     // Check if user has access to the board
-    if (
-      !board.owner.equals(req.user._id) &&
-      !board.members.some((member) => member.user.equals(req.user._id))
-    ) {
+    const isOwner = board.owner.equals(req.user._id);
+    const isMember = board.members.some((member) =>
+      member.user.equals(req.user._id)
+    );
+
+    console.log("Board access check:", {
+      boardId: board._id,
+      userId: req.user._id,
+      isOwner,
+      isMember,
+      ownerId: board.owner,
+      memberIds: board.members.map((m) => m.user),
+    });
+
+    if (!isOwner && !isMember) {
       return res
         .status(403)
         .json({ message: "Not authorized to access this board" });
@@ -343,6 +357,119 @@ exports.removeMember = async (req, res) => {
 
     res.json(board);
   } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// @desc    Invite user to board by email
+// @route   POST /api/boards/:id/invite
+// @access  Private
+exports.inviteUser = async (req, res) => {
+  try {
+    const { email, role = "member" } = req.body;
+    const board = await Board.findById(req.params.id);
+
+    if (!board) {
+      return res.status(404).json({ message: "Board not found" });
+    }
+
+    // Check if user is owner or admin
+    if (
+      !board.owner.equals(req.user._id) &&
+      !board.members.some(
+        (member) => member.user.equals(req.user._id) && member.role === "admin"
+      )
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Not authorized to invite users" });
+    }
+
+    // Find user by email
+    const userToInvite = await User.findOne({ email });
+    if (!userToInvite) {
+      return res
+        .status(404)
+        .json({ message: "User not found with this email" });
+    }
+
+    // Check if user is already a member
+    if (board.members.some((member) => member.user.equals(userToInvite._id))) {
+      return res.status(400).json({ message: "User is already a member" });
+    }
+
+    // Add user to board members
+    board.members.push({ user: userToInvite._id, role });
+    await board.save();
+
+    // Add activity log
+    board.activity.push({
+      type: "member_invite",
+      user: req.user._id,
+      description: `Invited ${userToInvite.name} to the board`,
+    });
+
+    await board.save();
+
+    res.json({
+      message: `Successfully invited ${userToInvite.name} to the board`,
+      user: {
+        _id: userToInvite._id,
+        name: userToInvite.name,
+        email: userToInvite.email,
+        avatar: userToInvite.avatar,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// @desc    Debug board access
+// @route   GET /api/boards/:id/debug
+// @access  Private
+exports.debugBoardAccess = async (req, res) => {
+  try {
+    const board = await Board.findById(req.params.id)
+      .populate("owner", "name email avatar")
+      .populate("members.user", "name email avatar");
+
+    if (!board) {
+      return res.status(404).json({ message: "Board not found" });
+    }
+
+    const isOwner = board.owner.equals(req.user._id);
+    const isMember = board.members.some((member) =>
+      member.user.equals(req.user._id)
+    );
+
+    res.json({
+      boardId: board._id,
+      boardTitle: board.title,
+      currentUser: {
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+      },
+      owner: {
+        id: board.owner._id,
+        name: board.owner.name,
+        email: board.owner.email,
+      },
+      members: board.members.map((m) => ({
+        id: m.user._id,
+        name: m.user.name,
+        email: m.user.email,
+        role: m.role,
+      })),
+      access: {
+        isOwner,
+        isMember,
+        hasAccess: isOwner || isMember,
+      },
+    });
+  } catch (error) {
+    console.error("Error in debugBoardAccess:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };

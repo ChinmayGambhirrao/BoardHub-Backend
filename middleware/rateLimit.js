@@ -5,6 +5,14 @@ const socketRateLimit = new Map();
 
 const socketRateLimiter = (eventName, maxRequests = 10, windowMs = 60000) => {
   return (socket, next) => {
+    // Check if user is authenticated
+    if (!socket.user || !socket.user._id) {
+      console.log(
+        `Rate limiter: User not authenticated for event ${eventName}`
+      );
+      return next(new Error("User not authenticated"));
+    }
+
     const userId = socket.user._id.toString();
     const key = `${userId}:${eventName}`;
 

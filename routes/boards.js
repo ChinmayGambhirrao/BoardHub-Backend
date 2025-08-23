@@ -10,6 +10,8 @@ const {
   addMember,
   removeMember,
   createBoardFromTemplate,
+  inviteUser,
+  debugBoardAccess,
 } = require("../controllers/board");
 const { createList, reorderLists } = require("../controllers/list");
 
@@ -27,6 +29,11 @@ router.get("/", getBoards);
 // @desc    Get a specific board
 // @access  Private
 router.get("/:id", getBoard);
+
+// @route   GET /api/boards/:id/debug
+// @desc    Debug board access
+// @access  Private
+router.get("/:id/debug", debugBoardAccess);
 
 // @route   POST /api/boards
 // @desc    Create a new board
@@ -98,5 +105,19 @@ router.post(
 // @desc    Remove member from board
 // @access  Private
 router.delete("/:id/members/:userId", removeMember);
+
+// @route   POST /api/boards/:id/invite
+// @desc    Invite user to board by email
+// @access  Private
+router.post(
+  "/:id/invite",
+  [
+    check("email", "Email is required").isEmail(),
+    check("role", "Role must be either admin or member")
+      .optional()
+      .isIn(["admin", "member"]),
+  ],
+  inviteUser
+);
 
 module.exports = router;

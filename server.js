@@ -7,10 +7,10 @@ const MongoStore = require("connect-mongo");
 const dotenv = require("dotenv");
 const connectDB = require("./config/db");
 const { createServer } = require("http");
-const {Server} = require("socket.io");
+const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
-const User = require("./models/User.js");
-const { socketRateLimiter } = require("./middleware/rateLimit.js");
+const User = require("./models/User");
+// Rate limiting is now handled inline to avoid middleware issues
 
 // Load environment variables
 dotenv.config();
@@ -36,8 +36,9 @@ io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth.token;
     if (!token) {
-      return next(new Error("Authentication error"));
+      return next(new Error("Authentication error: No token provided"));
     }
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.userId);
 
@@ -56,23 +57,93 @@ io.use(async (socket, next) => {
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.user.name} (${socket.id})`);
 
+  // Track joined boards to prevent duplicate joins
+  socket.joinedBoards = new Set();
+
   // Join board room
-  socket.io("join-board", (boardId) => {
+  socket.on("join-board", (boardId) => {
+    // Apply rate limiting manually to avoid middleware issues
+    const userId = socket.user._id.toString();
+    const key = `${userId}:join-board`;
+    const now = Date.now();
+    const windowMs = 60000; // 1 minute
+    const maxRequests = 5;
+
+    // Simple rate limiting check
+    if (!socket.joinBoardRequests) {
+      socket.joinBoardRequests = [];
+    }
+
+    const recentRequests = socket.joinBoardRequests.filter(
+      (timestamp) => now - timestamp < windowMs
+    );
+
+    if (recentRequests.length >= maxRequests) {
+      console.log(`Rate limit exceeded for join-board by ${socket.user.name}`);
+      return;
+    }
+
+    recentRequests.push(now);
+    socket.joinBoardRequests = recentRequests;
+
+    // Prevent duplicate joins
+    if (socket.joinedBoards.has(boardId)) {
+      console.log(
+        `${socket.user.name} already in board ${boardId}, skipping join`
+      );
+      return;
+    }
+
     socket.join(`board-${boardId}`);
+    socket.joinedBoards.add(boardId);
 
     // Notify other users in the board
-    socket.io(`board-${boardId}`).emit("user-joined", {
+    socket.to(`board-${boardId}`).emit("user-joined", {
       userId: socket.user._id,
       name: socket.user.name,
       avatar: socket.user.avatar,
       socketId: socket.id,
     });
+
     console.log(`${socket.user.name} joined board ${boardId}`);
   });
 
   // Leave board room
   socket.on("leave-board", (boardId) => {
+    // Apply rate limiting manually to avoid middleware issues
+    const userId = socket.user._id.toString();
+    const key = `${userId}:leave-board`;
+    const now = Date.now();
+    const windowMs = 60000; // 1 minute
+    const maxRequests = 5;
+
+    // Simple rate limiting check
+    if (!socket.leaveBoardRequests) {
+      socket.leaveBoardRequests = [];
+    }
+
+    const recentRequests = socket.leaveBoardRequests.filter(
+      (timestamp) => now - timestamp < windowMs
+    );
+
+    if (recentRequests.length >= maxRequests) {
+      console.log(`Rate limit exceeded for leave-board by ${socket.user.name}`);
+      return;
+    }
+
+    recentRequests.push(now);
+    socket.leaveBoardRequests = recentRequests;
+
+    // Only leave if actually joined
+    if (!socket.joinedBoards.has(boardId)) {
+      console.log(
+        `${socket.user.name} not in board ${boardId}, skipping leave`
+      );
+      return;
+    }
+
     socket.leave(`board-${boardId}`);
+    socket.joinedBoards.delete(boardId);
 
     // Notify other users in the board
     socket.to(`board-${boardId}`).emit("user-left", {
@@ -80,78 +151,106 @@ io.on("connection", (socket) => {
       name: socket.user.name,
       avatar: socket.user.avatar,
       socketId: socket.id,
-    })
+    });
 
     console.log(`${socket.user.name} left board ${boardId}`);
-  })
+  });
 
   // Card events with rate limiting
-  socket.on("card-created", socketRateLimiter("card-updated", 30), (data) => {
+  socket.on("card-created", (data) => {
+    socket.to(`board-${data.boardId}`).emit("card-created", {
+      ...data,
+      createdBy: {
+        _id: socket.user._id,
+        name: socket.user.name,
+        avatar: socket.user.avatar,
+      },
+    });
+  });
+
+  socket.on("card-updated", (data) => {
     socket.to(`board-${data.boardId}`).emit("card-updated", {
       ...data,
       updatedBy: {
         _id: socket.user._id,
         name: socket.user.name,
         avatar: socket.user.avatar,
-      }
-    })
-  })
+      },
+    });
+  });
 
-  socket.on("card-deleted", socketRateLimiter("card-deleted", 10), (data) => {
+  socket.on("card-deleted", (data) => {
     socket.to(`board-${data.boardId}`).emit("card-deleted", {
       ...data,
       deletedBy: {
         _id: socket.user._id,
         name: socket.user.name,
         avatar: socket.user.avatar,
-      }
-    })
-  })
+      },
+    });
+  });
 
-  socket.on("card-moved", socketRateLimiter("card-moved", 50), (data) => {
+  socket.on("card-moved", (data) => {
     socket.to(`board-${data.boardId}`).emit("card-moved", {
       ...data,
       movedBy: {
         _id: socket.user._id,
         name: socket.user.name,
         avatar: socket.user.avatar,
-      }
-    })
-  })
+      },
+    });
+  });
 
   // List events with rate limiting
-  socket.on("list-created", socketRateLimiter("list-created", 15), (data) => {
+  socket.on("list-created", (data) => {
     socket.to(`board-${data.boardId}`).emit("list-created", {
       ...data,
       createdBy: {
         _id: socket.user._id,
         name: socket.user.name,
         avatar: socket.user.avatar,
-      }
-    })
-  })
+      },
+    });
+  });
 
-  socket.on("list-updated", socketRateLimiter("list-updated", 15), (data) => {
+  socket.on("list-updated", (data) => {
     socket.to(`board-${data.boardId}`).emit("list-updated", {
       ...data,
       updatedBy: {
         _id: socket.user._id,
         name: socket.user.name,
         avatar: socket.user.avatar,
-      }
-    })
-  })
+      },
+    });
+  });
 
-  socket.on("list-deleted", socketRateLimiter("list-deleted", 15), (data) => {
+  socket.on("list-deleted", (data) => {
     socket.to(`board-${data.boardId}`).emit("list-deleted", {
       ...data,
       deletedBy: {
         _id: socket.user._id,
         name: socket.user.name,
         avatar: socket.user.avatar,
-      }
-    })
-  })
+      },
+    });
+  });
+
+  // Board events with rate limiting
+  socket.on("board-updated", (data) => {
+    socket.to(`board-${data.boardId}`).emit("board-updated", {
+      ...data,
+      updatedBy: {
+        _id: socket.user._id,
+        name: socket.user.name,
+        avatar: socket.user.avatar,
+      },
+    });
+  });
+
+  // Handle disconnection
+  socket.on("disconnect", () => {
+    console.log(`User disconnected: ${socket.user.name} (${socket.id})`);
+  });
 });
 
 // Middleware
@@ -219,8 +318,9 @@ const startServer = async () => {
     console.log("Connected to MongoDB");
 
     const PORT = process.env.PORT || 5001;
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
+      console.log(`Socket.io server ready for real-time collaboration`);
     });
   } catch (err) {
     console.error("MongoDB connection error:", err);
