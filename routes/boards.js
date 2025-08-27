@@ -12,6 +12,7 @@ const {
   createBoardFromTemplate,
   inviteUser,
   debugBoardAccess,
+  joinBoardViaLink,
 } = require("../controllers/board");
 const { createList, reorderLists } = require("../controllers/list");
 
@@ -34,6 +35,11 @@ router.get("/:id", getBoard);
 // @desc    Debug board access
 // @access  Private
 router.get("/:id/debug", debugBoardAccess);
+
+// @route   POST /api/boards/:id/join
+// @desc    Join board via shared link
+// @access  Private
+router.post("/:id/join", joinBoardViaLink);
 
 // @route   POST /api/boards
 // @desc    Create a new board

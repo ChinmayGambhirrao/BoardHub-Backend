@@ -171,9 +171,11 @@ exports.getBoard = async (req, res) => {
     });
 
     if (!isOwner && !isMember) {
-      return res
-        .status(403)
-        .json({ message: "Not authorized to access this board" });
+      return res.status(403).json({
+        message: "Not authorized to access this board",
+        boardId: board._id,
+        needsToJoin: true,
+      });
     }
 
     res.json(board);
@@ -470,6 +472,102 @@ exports.debugBoardAccess = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in debugBoardAccess:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// @desc    Join board via shared link
+// @route   POST /api/boards/:id/join
+// @access  Private (but automatically adds user as member)
+exports.joinBoardViaLink = async (req, res) => {
+  try {
+    const board = await Board.findById(req.params.id)
+      .populate("owner", "name email avatar")
+      .populate("members.user", "name email avatar");
+
+    if (!board) {
+      return res.status(404).json({ message: "Board not found" });
+    }
+
+    // Check if user is already a member
+    const isMember = board.members.some((member) =>
+      member.user.equals(req.user._id)
+    );
+    const isOwner = board.owner.equals(req.user._id);
+
+    if (isOwner || isMember) {
+      // User already has access, return the board with full data
+      const fullBoard = await Board.findById(req.params.id)
+        .populate("owner", "name email avatar")
+        .populate("members.user", "name email avatar")
+        .populate({
+          path: "lists",
+          populate: {
+            path: "cards",
+            populate: [
+              { path: "members", select: "name email avatar" },
+              { path: "attachments" },
+              {
+                path: "comments",
+                populate: { path: "author", select: "name email avatar" },
+              },
+            ],
+          },
+        });
+      return res.json({
+        message: "Already have access to board",
+        board: fullBoard,
+      });
+    }
+
+    // Add user as a member with default role
+    board.members.push({
+      user: req.user._id,
+      role: "member",
+      joinedAt: new Date(),
+    });
+
+    // Add activity log
+    board.activity.push({
+      type: "member_join_via_link",
+      user: req.user._id,
+      description: `${req.user.name} joined via shared link`,
+      timestamp: new Date(),
+    });
+
+    await board.save();
+
+    // Populate the board again to get the updated member info and full board data
+    const updatedBoard = await Board.findById(req.params.id)
+      .populate("owner", "name email avatar")
+      .populate("members.user", "name email avatar")
+      .populate({
+        path: "lists",
+        populate: {
+          path: "cards",
+          populate: [
+            { path: "members", select: "name email avatar" },
+            { path: "attachments" },
+            {
+              path: "comments",
+              populate: { path: "author", select: "name email avatar" },
+            },
+          ],
+        },
+      });
+
+    console.log("User successfully joined board via link:", {
+      boardId: board._id,
+      userId: req.user._id,
+      userName: req.user.name,
+    });
+
+    res.json({
+      message: "Successfully joined the board",
+      board: updatedBoard,
+    });
+  } catch (error) {
+    console.error("Error in joinBoardViaLink:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
