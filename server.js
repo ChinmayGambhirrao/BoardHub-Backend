@@ -97,6 +97,12 @@ io.on("connection", (socket) => {
     socket.join(`board-${boardId}`);
     socket.joinedBoards.add(boardId);
 
+    // Log room information
+    const room = io.sockets.adapter.rooms.get(`board-${boardId}`);
+    console.log(
+      `Room board-${boardId} now has ${room ? room.size : 0} connected users`
+    );
+
     // Notify other users in the board
     socket.to(`board-${boardId}`).emit("user-joined", {
       userId: socket.user._id,
@@ -105,7 +111,9 @@ io.on("connection", (socket) => {
       socketId: socket.id,
     });
 
-    console.log(`${socket.user.name} joined board ${boardId}`);
+    console.log(
+      `${socket.user.name} joined board ${boardId} (socket: ${socket.id})`
+    );
   });
 
   // Leave board room
@@ -190,16 +198,8 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("card-moved", (data) => {
-    socket.to(`board-${data.boardId}`).emit("card-moved", {
-      ...data,
-      movedBy: {
-        _id: socket.user._id,
-        name: socket.user.name,
-        avatar: socket.user.avatar,
-      },
-    });
-  });
+  // card-moved events are now handled by the server-side API controller
+  // This ensures proper authorization and data consistency
 
   // List events with rate limiting
   socket.on("list-created", (data) => {
@@ -291,6 +291,9 @@ app.use(
 // Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Make io instance available to routes
+app.set("io", io);
 
 // Routes
 app.use("/api/auth", require("./routes/auth"));

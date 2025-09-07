@@ -298,8 +298,8 @@ exports.addAttachment = async (req, res) => {
       url: req.file.path,
       card: card._id,
       uploadedBy: req.user._id,
-      isImage: req.file.mimetype.startsWith('image/'),
-      thumbnailUrl: req.file.mimetype.startsWith('image/') ? req.file.path : ''
+      isImage: req.file.mimetype.startsWith("image/"),
+      thumbnailUrl: req.file.mimetype.startsWith("image/") ? req.file.path : "",
     });
 
     await attachment.save();
@@ -318,7 +318,7 @@ exports.addAttachment = async (req, res) => {
 
     res.status(201).json(attachment);
   } catch (error) {
-    console.error('Attachment upload error:', error);
+    console.error("Attachment upload error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
@@ -349,10 +349,10 @@ exports.removeAttachment = async (req, res) => {
 
     // Remove attachment from Cloudinary
     try {
-      const publicId = attachment.url.split('/').slice(-1)[0].split('.')[0];
+      const publicId = attachment.url.split("/").slice(-1)[0].split(".")[0];
       await cloudinary.uploader.destroy(publicId);
     } catch (cloudinaryError) {
-      console.error('Cloudinary deletion error:', cloudinaryError);
+      console.error("Cloudinary deletion error:", cloudinaryError);
       // Continue with deletion even if Cloudinary deletion fails
     }
 
@@ -376,7 +376,7 @@ exports.removeAttachment = async (req, res) => {
 
     res.json({ message: "Attachment removed" });
   } catch (error) {
-    console.error('Attachment removal error:', error);
+    console.error("Attachment removal error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
@@ -562,6 +562,9 @@ exports.moveCard = async (req, res) => {
         .json({ message: "Not authorized to move this card" });
     }
 
+    // Get original position before removing
+    const originalIndex = sourceList.cards.findIndex((c) => c.equals(card._id));
+
     // Remove from old list
     sourceList.cards = sourceList.cards.filter((c) => !c.equals(card._id));
     await sourceList.save();
@@ -583,6 +586,44 @@ exports.moveCard = async (req, res) => {
     });
 
     await board.save();
+
+    // Emit real-time event to all users in the board
+    const io = req.app.get("io");
+    console.log("Attempting to emit card-moved event...");
+    console.log("IO instance available:", !!io);
+    console.log("Board ID:", board._id);
+    console.log("Room name:", `board-${board._id}`);
+
+    if (io) {
+      const eventData = {
+        // Normalize all IDs to strings for reliable client comparisons
+        boardId: String(board._id),
+        cardId: String(card._id),
+        sourceListId: String(sourceList._id),
+        destinationListId: String(destinationList._id),
+        sourceIndex: originalIndex,
+        destinationIndex: position,
+        movedBy: {
+          _id: String(req.user._id),
+          name: req.user.name,
+          avatar: req.user.avatar,
+        },
+      };
+
+      console.log("Emitting card-moved event with data:", eventData);
+
+      io.to(`board-${String(board._id)}`).emit("card-moved", eventData);
+
+      // Also log the room information
+      const room = io.sockets.adapter.rooms.get(`board-${String(board._id)}`);
+      console.log(
+        `Room board-${board._id} has ${room ? room.size : 0} connected users`
+      );
+
+      console.log("✅ Card-moved event emitted successfully");
+    } else {
+      console.error("❌ IO instance not available for card-moved emission");
+    }
 
     res.json(card);
   } catch (error) {
