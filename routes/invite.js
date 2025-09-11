@@ -45,33 +45,31 @@ router.post("/", auth, async (req, res) => {
         .json({ error: "User is already a member of this board" });
     }
 
-    // Check for existing pending invitation
-    const existingInvitation = await Invitation.findOne({
+    // Check for existing pending invitation; if found, extend expiry and reuse
+    let invitation = await Invitation.findOne({
       email,
       board: boardId,
       status: "pending",
     });
 
-    if (existingInvitation) {
-      return res
-        .status(400)
-        .json({ error: "Invitation already sent to this email" });
+    if (invitation) {
+      invitation.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await invitation.save();
+    } else {
+      // Create invitation
+      invitation = new Invitation({
+        email,
+        board: boardId,
+        invitedBy: req.user._id,
+        role,
+      });
+      await invitation.save();
     }
-
-    // Create invitation
-    const invitation = new Invitation({
-      email,
-      board: boardId,
-      invitedBy: req.user._id,
-      role,
-    });
-
-    await invitation.save();
 
     // Send email
     const invitationLink = `${process.env.FRONTEND_URL}/invite/${invitation.token}`;
 
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.EMAIL_USER,
