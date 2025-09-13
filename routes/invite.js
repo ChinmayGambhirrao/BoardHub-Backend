@@ -18,6 +18,24 @@ router.post("/", auth, async (req, res) => {
   }
 
   try {
+    // Check if email configuration is available
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error("Email configuration missing:", {
+        EMAIL_USER: !!process.env.EMAIL_USER,
+        EMAIL_PASS: !!process.env.EMAIL_PASS,
+      });
+      return res.status(500).json({
+        error: "Email service not configured. Please contact administrator.",
+      });
+    }
+
+    if (!process.env.FRONTEND_URL) {
+      console.error("Frontend URL not configured");
+      return res.status(500).json({
+        error: "Frontend URL not configured. Please contact administrator.",
+      });
+    }
+
     // Find the board
     const board = await Board.findById(boardId).populate("owner", "name email");
     if (!board) {
@@ -69,13 +87,22 @@ router.post("/", auth, async (req, res) => {
     // Send email
     const invitationLink = `${process.env.FRONTEND_URL}/invite/${invitation.token}`;
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
+    let transporter;
+    try {
+      transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to create email transporter:", error);
+      return res.status(500).json({
+        error:
+          "Failed to configure email service. Please contact administrator.",
+      });
+    }
 
     const emailHtml = `
     <!DOCTYPE html>
@@ -151,12 +178,20 @@ router.post("/", auth, async (req, res) => {
     </html>
     `;
 
-    await transporter.sendMail({
-      from: `"BoardHub" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: `You're invited to collaborate on "${board.title}"`,
-      html: emailHtml,
-    });
+    try {
+      await transporter.sendMail({
+        from: `"BoardHub" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: `You're invited to collaborate on "${board.title}"`,
+        html: emailHtml,
+      });
+    } catch (emailError) {
+      console.error("Failed to send email:", emailError);
+      return res.status(500).json({
+        error:
+          "Failed to send invitation email. Please check email configuration.",
+      });
+    }
 
     res.json({
       success: true,
