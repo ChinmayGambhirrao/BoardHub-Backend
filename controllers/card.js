@@ -596,15 +596,14 @@ exports.moveCard = async (req, res) => {
 
     if (io) {
       const eventData = {
-        // Normalize all IDs to strings for reliable client comparisons
-        boardId: String(board._id),
-        cardId: String(card._id),
-        sourceListId: String(sourceList._id),
-        destinationListId: String(destinationList._id),
+        boardId: board._id,
+        cardId: card._id,
+        sourceListId: sourceList._id,
+        destinationListId: destinationList._id,
         sourceIndex: originalIndex,
         destinationIndex: position,
         movedBy: {
-          _id: String(req.user._id),
+          _id: req.user._id,
           name: req.user.name,
           avatar: req.user.avatar,
         },
@@ -612,10 +611,10 @@ exports.moveCard = async (req, res) => {
 
       console.log("Emitting card-moved event with data:", eventData);
 
-      io.to(`board-${String(board._id)}`).emit("card-moved", eventData);
+      io.to(`board-${board._id}`).emit("card-moved", eventData);
 
       // Also log the room information
-      const room = io.sockets.adapter.rooms.get(`board-${String(board._id)}`);
+      const room = io.sockets.adapter.rooms.get(`board-${board._id}`);
       console.log(
         `Room board-${board._id} has ${room ? room.size : 0} connected users`
       );

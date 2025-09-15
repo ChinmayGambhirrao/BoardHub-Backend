@@ -2,6 +2,7 @@ const express = require("express");
 const { check } = require("express-validator");
 const authController = require("../controllers/auth");
 const auth = require("../middleware/auth");
+const config = require("../config/config");
 
 const router = express.Router();
 
@@ -48,15 +49,35 @@ router.get("/google", (req, res) => {
   // Log the redirect URI for debugging
   console.log("Redirect URI:", redirectUri);
 
-  res.redirect(
-    `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${process.env.GOOGLE_CLIENT_ID}&` +
-      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `response_type=code&` +
-      `scope=email profile&` +
-      `access_type=offline&` +
-      `prompt=consent`
+  const scope = encodeURIComponent("openid email profile");
+  // Diagnostic: ensure env is visible in this route
+  console.log(
+    "[Auth Route] GOOGLE_CLIENT_ID present:",
+    Boolean(process.env.GOOGLE_CLIENT_ID)
   );
+
+  const rawClientId =
+    config.googleClientId || process.env.GOOGLE_CLIENT_ID || "";
+  if (!rawClientId) {
+    console.error(
+      "Missing GOOGLE_CLIENT_ID env var; cannot start Google OAuth"
+    );
+    return res.status(500).json({
+      message: "Server misconfiguration: GOOGLE_CLIENT_ID is not set",
+    });
+  }
+  const clientId = encodeURIComponent(rawClientId);
+  const encodedRedirect = encodeURIComponent(redirectUri);
+  const authUrl =
+    `https://accounts.google.com/o/oauth2/v2/auth?` +
+    `client_id=${clientId}&` +
+    `redirect_uri=${encodedRedirect}&` +
+    `response_type=code&` +
+    `scope=${scope}&` +
+    `access_type=offline&` +
+    `prompt=consent`;
+
+  res.redirect(authUrl);
 });
 
 // @route   GET /api/auth/google/callback

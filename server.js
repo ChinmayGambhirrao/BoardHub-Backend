@@ -5,15 +5,21 @@ const passport = require("passport");
 const session = require("express-session");
 const MongoStore = require("connect-mongo");
 const dotenv = require("dotenv");
+const path = require("path");
 const connectDB = require("./config/db");
+const config = require("./config/config");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const User = require("./models/User");
 // Rate limiting is now handled inline to avoid middleware issues
 
-// Load environment variables
-dotenv.config();
+// Load environment variables (always from server/.env)
+dotenv.config({ path: path.join(__dirname, ".env") });
+console.log(
+  "Env check → GOOGLE_CLIENT_ID present:",
+  Boolean(process.env.GOOGLE_CLIENT_ID)
+);
 
 // Initialize Express app
 const app = express();
@@ -273,11 +279,11 @@ app.use(
 // Session configuration
 app.use(
   session({
-    secret: process.env.JWT_SECRET,
+    secret: config.jwtSecret,
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
-      mongoUrl: process.env.MONGODB_URI,
+      mongoUrl: config.mongoUri,
       ttl: 14 * 24 * 60 * 60, // 14 days
     }),
     cookie: {

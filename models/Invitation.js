@@ -57,3 +57,5 @@ InvitationSchema.index({ status: 1 });
 module.exports = mongoose.model("Invitation", InvitationSchema);
 
 
+
+

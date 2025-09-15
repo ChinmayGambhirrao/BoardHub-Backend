@@ -128,6 +128,17 @@ exports.googleAuth = async (req, res) => {
       });
     }
 
+    // Validate environment configuration
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      console.error("Missing Google OAuth env vars", {
+        hasClientId: !!process.env.GOOGLE_CLIENT_ID,
+        hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+      });
+      return res.status(500).json({
+        message: "Server misconfiguration: Google OAuth not configured",
+      });
+    }
+
     // Create OAuth2 client with correct redirect URI
     const serverUrl = process.env.SERVER_URL || "http://localhost:5001";
     const redirectUri = `${serverUrl}/api/auth/google/callback`;
@@ -140,6 +151,12 @@ exports.googleAuth = async (req, res) => {
 
     // Exchange the code for tokens
     const { tokens } = await oauth2Client.getToken(code);
+    if (!tokens || !tokens.id_token) {
+      console.error("No id_token received from Google token exchange");
+      return res.status(400).json({
+        message: "Invalid response from Google: missing id_token",
+      });
+    }
 
     // Get user info from the ID token
     const ticket = await oauth2Client.verifyIdToken({
