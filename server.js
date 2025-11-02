@@ -4,22 +4,22 @@ const mongoose = require("mongoose");
 const passport = require("passport");
 const session = require("express-session");
 const MongoStore = require("connect-mongo");
-const dotenv = require("dotenv");
 const path = require("path");
-const connectDB = require("./config/db");
-const config = require("./config/config");
-const { createServer } = require("http");
-const { Server } = require("socket.io");
-const jwt = require("jsonwebtoken");
-const User = require("./models/User");
 // Rate limiting is now handled inline to avoid middleware issues
 
-// Load environment variables (always from server/.env)
-dotenv.config({ path: path.join(__dirname, ".env") });
+// Import config (which loads .env)
+const connectDB = require("./config/db");
+const config = require("./config/config");
+
+// Now check if env is loaded
 console.log(
   "Env check → GOOGLE_CLIENT_ID present:",
   Boolean(process.env.GOOGLE_CLIENT_ID)
 );
+const { createServer } = require("http");
+const { Server } = require("socket.io");
+const jwt = require("jsonwebtoken");
+const User = require("./models/User");
 
 // Initialize Express app
 const app = express();

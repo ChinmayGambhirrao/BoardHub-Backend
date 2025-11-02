@@ -3,15 +3,19 @@ const bcrypt = require("bcryptjs");
 const { validationResult } = require("express-validator");
 const User = require("../models/User");
 const { OAuth2Client } = require("google-auth-library");
+const config = require("../config/config");
 
 // Initialize Google OAuth client
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Generate JWT Token
 const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, {
-    expiresIn: "30d",
-  });
+  const secret = config.jwtSecret;
+  if (!secret) {
+    console.error("JWT secret is not configured. Set JWT_SECRET or config.jwtSecret.");
+    throw new Error("Server configuration error: JWT secret missing");
+  }
+  return jwt.sign({ userId }, secret, { expiresIn: "30d" });
 };
 
 // @desc    Register user

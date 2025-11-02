@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const config = require("../config/config");
 
 // Middleware to protect routes
 const auth = async (req, res, next) => {
@@ -23,16 +24,16 @@ const auth = async (req, res, next) => {
         .json({ message: "No authentication token, access denied" });
     }
 
-    if (!process.env.JWT_SECRET) {
-      console.error("JWT_SECRET is not set in environment variables");
+    if (!config.jwtSecret) {
+      console.error("JWT secret is not configured. Set JWT_SECRET or config.jwtSecret.");
       return res.status(500).json({ message: "Server configuration error" });
     }
 
     // Verify token
-    console.log("Verifying token with JWT_SECRET");
+    console.log("Verifying token with configured JWT secret");
     let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      decoded = jwt.verify(token, config.jwtSecret);
     } catch (jwtError) {
       console.error("JWT verification error:", jwtError);
       return res.status(401).json({
